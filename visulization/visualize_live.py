@@ -29,18 +29,6 @@ SENSOR_COORDS_RIGHT = [
     (57, 235),  # ch15 : small toe mid
 ]
 
-# 외곽선(오른발) 윤곽 좌표(대략) — 점들을 부드럽게 연결해서 그린다.
-# 필요하면 점 몇 개만 드래그하듯 수정하면 모양이 맞춰진다.
-OUTLINE_RIGHT = [
-    (27, 250), (43, 247), (57, 242), (62, 239), (65, 236), (68, 233),
-    (80, 195), (80, 180), (78, 160), (75, 145), (73, 130), (72, 115),
-    (72, 100), (70, 85), (68, 70),  (66, 60),  (64, 50),  (62, 42),
-    (60, 35),  (58, 30),  (55, 28), (50, 26), (45, 26), (40, 28),
-    (36, 32),  (34, 40),  (32, 50), (30, 65),  (28, 80),  (27, 95),
-    (27, 110), (27, 125), (28, 140), (30, 155), (32, 170), (33, 185),
-    (34, 200), (32, 212), (30, 225), (28, 238), (26, 250), (27, 250)
-]
-
 # ===== 내부 함수들 =====
 def parse_line(line: str):
     """ 'time_ms,ch0,...,ch15' → (t:int, [16values]) """
@@ -64,9 +52,18 @@ def mirror_left(coords):
 
 # ===== 메인 =====
 def main():
-    # 좌/우 발 선택 반영
+    # 센서 좌표 선택
     coords = SENSOR_COORDS_RIGHT if FOOT == "right" else mirror_left(SENSOR_COORDS_RIGHT)
-    outline = OUTLINE_RIGHT if FOOT == "right" else mirror_left(OUTLINE_RIGHT)
+
+    # 외곽선 좌표를 CSV에서 읽어오기
+    outline = np.loadtxt("insole_outline_px_smooth.csv", delimiter=",")
+ 
+    # y좌표 반전
+    max_y = outline[:,1].max()
+    outline[:,1] = max_y - outline[:,1]
+
+    if FOOT == "left":
+        outline = np.array(mirror_left(outline.tolist()))
 
     # 시리얼 오픈 (실패하면 FAKE 모드)
     use_fake = False
@@ -81,16 +78,15 @@ def main():
     # Figure
     plt.ion()
     fig, ax = plt.subplots(figsize=(4.2, 8.0))
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 260)
+    ax.set_xlim(0, 1000)   # CSV 픽셀 좌표 범위에 맞게 수정 필요
+    ax.set_ylim(0, 1000)
     ax.set_aspect('equal')
     ax.set_title(f"Insole Pressure ({FOOT} foot)")
     ax.set_xticks([]); ax.set_yticks([])
 
     # 외곽선 그리기
-    ox, oy = zip(*outline)
+    ox, oy = outline[:,0], outline[:,1]
     ax.plot(ox, oy, 'k-', linewidth=1.8, alpha=0.8)
-
     # 센서 점 초기화
     xs = [p[0] for p in coords]
     ys = [p[1] for p in coords]
