@@ -25,29 +25,36 @@
   Comments are in English (per user preference).
 */
 
+#include <Arduino.h>
+#include <WiFi.h>
+#include <esp_now.h>
+#include <SPI.h>
+#include <SD.h>
+#include <esp_wifi.h>
+
 // =================== Build-time configuration ===================
 #define FW_VERSION     "v3.1.0"
 
 // ---- Select ROLE and SIDE ----
 // Exactly one ROLE must be defined:
-#define ROLE_MASTER
-// #define ROLE_SLAVE
+// #define ROLE_MASTER
+#define ROLE_SLAVE
 
 // Side of THIS device (used for naming & mapping)
-#define SIDE_RIGHT
-// #define SIDE_LEFT
+// #define SIDE_RIGHT
+#define SIDE_LEFT
 
 // ---- OTA settings ----
 #define OTA_ENABLE     1                 // 1=enable OTA, 0=disable
-#define WIFI_SSID      "YOUR_SSID"
-#define WIFI_PASS      "YOUR_PASSWORD"
+#define WIFI_SSID      "KT_GiGA_B6DA"
+#define WIFI_PASS      "f0gh02gj71"
 #define OTA_HOSTNAME   "insole-c3"
 
 // ---- ESP-NOW settings ----
-#define ESPNOW_CHANNEL 1                 // 1..14; use 0 to follow STA AP channel
+#define ESPNOW_CHANNEL 0                 // 1..14; use 0 to follow STA AP channel
 // Fill with the OTHER device's MAC address (use Serial.println(WiFi.macAddress()))
 // Example: {0x24,0x6F,0x28,0xAA,0xBB,0xCC}
-static uint8_t PEER_ADDR[6] = { 0x24,0x6F,0x28,0xAA,0xBB,0xCC };
+static uint8_t PEER_ADDR[6] = { 0x8C,0xD0,0xB2,0xA9,0x01,0x92 };
 
 // ---- Sampling / Logging ----
 #define LOG_HZ               100         // frame rate [Hz]
@@ -70,32 +77,27 @@ static uint8_t PEER_ADDR[6] = { 0x24,0x6F,0x28,0xAA,0xBB,0xCC };
 #endif
 
 // =================== Includes ===================
-#include <Arduino.h>
-#include <WiFi.h>
-#include <esp_now.h>
 #if OTA_ENABLE
   #include <ArduinoOTA.h>
 #endif
-#include <SPI.h>
-#include <SD.h>
 
 // =================== Hardware mapping ===================
 // CD74HC4067 address lines + EN (active-LOW)
-#define PIN_S0      4
-#define PIN_S1      5
-#define PIN_S2      6
-#define PIN_S3      7
+#define PIN_S0      1
+#define PIN_S1      2
+#define PIN_S2      3
+#define PIN_S3      10
 #define PIN_EN      8     // tie to GND and set USE_EN=0 if you prefer always-on
-#define USE_EN      1
+#define USE_EN      0
 
 // ADC pin (ESP32-C3 ADC1 pin; adjust to your board)
-#define ADC_PIN     1     // e.g., GPIO1 (A1)
+#define ADC_PIN     0     // e.g., GPIO1 (A1)
 
 // microSD SPI pins
-#define SD_SCK      10
-#define SD_MISO     9
+#define SD_SCK      4
+#define SD_MISO     5
 #define SD_MOSI     6
-#define SD_CS       2
+#define SD_CS       7
 
 // =================== MUX helpers ===================
 static inline void setAddress(uint8_t ch){
@@ -265,12 +267,77 @@ void setupOTA(){
 }
 
 // =================== ESP-NOW ===================
-void onDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
-void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status){
-  (void)mac_addr; (void)status;
+void onDataSent(const wifi_tx_info_t* info, esp_now_send_status_t status);
+void onDataRecv(const esp_now_recv_info* info, const uint8_t* incomingData, int len);
+
+// ---- Definitions ----
+void onDataSent(const wifi_tx_info_t* info, esp_now_send_status_t status) {
+  (void)info; (void)status;
+  // Serial.printf("[ESPNOW] send status=%d\n", status);
 }
+
+void onDataRecv(const esp_now_recv_info* info, const uint8_t* incomingData, int len) {
+  if (len < 2) return;
+  const uint16_t type = *(const uint16_t*)incomingData;
+
+#if defined(ROLE_MASTER)
+
+  if (type == MSG_DATA && len >= (int)sizeof(DataMsg)) {
+    const DataMsg* m = (const DataMsg*)incomingData;
+    const int idx = findSlot(m->frame_id);
+
+  #if defined(SIDE_RIGHT)
+    // MASTER is RIGHT; incoming assumed LEFT
+    memcpy(fbuf[idx].L, m->ch, sizeof(uint16_t)*16);
+    fbuf[idx].haveL = true;
+  #else
+    memcpy(fbuf[idx].R, m->ch, sizeof(uint16_t)*16);
+    fbuf[idx].haveR = true;
+  #endif
+
+  } else if (type == MSG_SYNC_RESP && len >= (int)sizeof(SyncResp)) {
+    const SyncResp* s = (const SyncResp*)incomingData;
+    const uint32_t t3 = millis();
+    est_offset_ms = ((int32_t)s->t1_ms - (int32_t)s->t0_ms
+                   + (int32_t)s->t2_ms - (int32_t)t3) / 2;
+    // Serial.printf("[SYNC] offset≈%ld ms\n", (long)est_offset_ms);
+  }
+
+#else // ROLE_SLAVE
+
+  if (type == MSG_TICK && len >= (int)sizeof(TickMsg)) {
+    const TickMsg* t = (const TickMsg*)incomingData;
+    int vals[16]; readAll16(vals);
+
+    DataMsg out{};
+    out.type = MSG_DATA;
+    out.frame_id = t->frame_id;
+    out.seq = ++slave_seq;
+    out.t_local_ms = millis();
+  #if defined(SIDE_RIGHT)
+    out.side = 1;
+  #else
+    out.side = 0;
+  #endif
+    for (int i=0; i<16; i++) out.ch[i] = (uint16_t)vals[i];
+
+    if (espnow_ready) esp_now_send(PEER_ADDR, (const uint8_t*)&out, sizeof(out));
+
+  } else if (type == MSG_SYNC_REQ && len >= (int)sizeof(SyncReq)) {
+    const SyncReq* q = (const SyncReq*)incomingData;
+    SyncResp r{};
+    r.type = MSG_SYNC_RESP;
+    r.t0_ms = q->t0_ms;
+    r.t1_ms = millis();
+    r.t2_ms = millis();
+    if (espnow_ready) esp_now_send(PEER_ADDR, (const uint8_t*)&r, sizeof(r));
+  }
+
+#endif
+}
+
 bool initESPNOW(){
-  if(esp_now_init()!=ESP_OK){
+  if (esp_now_init() != ESP_OK) {
     Serial.println("[ESPNOW] init failed");
     return false;
   }
@@ -281,8 +348,8 @@ bool initESPNOW(){
   memcpy(peer.peer_addr, PEER_ADDR, 6);
   peer.ifidx   = WIFI_IF_STA;
   peer.encrypt = false;
-  peer.channel = ESPNOW_CHANNEL; // 0 = follow current STA channel (useful if OTA connected)
-  if(esp_now_add_peer(&peer)!=ESP_OK){
+  peer.channel = ESPNOW_CHANNEL; // 0 = follow current STA channel (if OTA connected)
+  if (esp_now_add_peer(&peer) != ESP_OK) {
     Serial.println("[ESPNOW] add_peer failed");
     return false;
   }
@@ -324,6 +391,18 @@ void flushReadyFrames(){
       if(timeout)        flags |= 0x02;
       // write CSV line
       if(logFile){
+        // Serial.print("[CSV] R: ");
+        // for(int k=0;k<16;k++){
+        //   Serial.print(fbuf[i].R[k]);
+        //   if(k<15) Serial.print(",");
+        // }
+        // Serial.print(" | L: ");
+        // for(int k=0;k<16;k++){
+        //   Serial.print(fbuf[i].L[k]);
+        //   if(k<15) Serial.print(",");
+        // }
+        // Serial.println();
+
         logFile.print(fbuf[i].t_ms);
         logFile.print(','); logFile.print(fbuf[i].frame_id);
         for(int k=0;k<16;k++){ logFile.print(','); logFile.print(fbuf[i].R[k]); }
@@ -465,15 +544,34 @@ void loop(){
   uint32_t fid = ++cur_frame_id;
   int valsR[16]; readAll16(valsR); // MASTER assumed RIGHT by default
 
+  // --- 센서값 시리얼 출력 (디버깅용) ---
+  // Serial.print("[SENSOR] R: ");
+  // for(int i=0; i<16; i++){
+  //   Serial.print(valsR[i]);
+  //   if(i < 15) Serial.print(",");
+  // }
+
   // Store to buffer
   int idx = findSlot(fid);
 #if defined(SIDE_RIGHT)
-  memcpy(fbuf[idx].R, valsR, sizeof(uint16_t)*16);
+  for(int i=0; i<16; i++) fbuf[idx].R[i] = (uint16_t)valsR[i];
   fbuf[idx].haveR = true;
 #else
-  memcpy(fbuf[idx].L, valsR, sizeof(uint16_t)*16);
+  for(int i=0; i<16; i++) fbuf[idx].L[i] = (uint16_t)valsR[i];
   fbuf[idx].haveL = true;
 #endif
+
+  // --- SLAVE(LEFT) 데이터가 도착했으면 같이 출력 ---
+  // if(fbuf[idx].haveL) {
+  //   Serial.print(" | L: ");
+  //   for(int i=0; i<16; i++){
+  //     Serial.print(fbuf[idx].L[i]);
+  //     if(i < 15) Serial.print(",");
+  //   }
+  // } else {
+  //   Serial.print(" | L: (waiting)");
+  // }
+  // Serial.println();
 
   // Send TICK
   TickMsg t{}; t.type = MSG_TICK; t.frame_id = fid; t.fire_ms = millis();
