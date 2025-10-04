@@ -54,10 +54,10 @@
 #define ESPNOW_CHANNEL 0                 // 1..14; use 0 to follow STA AP channel
 // Fill with the OTHER device's MAC address (use Serial.println(WiFi.macAddress()))
 // Example: {0x24,0x6F,0x28,0xAA,0xBB,0xCC}
-static uint8_t PEER_ADDR[6] = { 0x8C,0xD0,0xB2,0xA9,0x01,0x92 };
+static uint8_t PEER_ADDR[6] = { 0x8C,0xD0,0xB2,0xA9,0x01,0x92 };  // MASTER MAC : 0x8C,0xD0,0xB2,0xA9,0x01,0x92 | SLAVE MAC : 0x8C,0xD0,0xB2,0xA8,0xFB,0x6E
 
 // ---- Sampling / Logging ----
-#define LOG_HZ               100         // frame rate [Hz]
+#define LOG_HZ               20         // frame rate [Hz]
 #define BAUD                 115200
 #define PRINT_HEADER_SERIAL  1
 #define ADC_BITS             12
@@ -384,7 +384,7 @@ void flushReadyFrames(){
   uint32_t now = millis();
   for(int i=0;i<FRAME_BUF_SZ;i++){
     if(fbuf[i].frame_id==0) continue;
-    bool timeout = (now - fbuf[i].t_ms) > 30; // 30 ms timeout
+    bool timeout = (now - fbuf[i].t_ms) > 70; // 70 ms timeout
     if((fbuf[i].haveR && fbuf[i].haveL) || timeout){
       uint8_t flags = 0;
       if(!fbuf[i].haveL) flags |= 0x01;
