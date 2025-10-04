@@ -1,9 +1,9 @@
 # Conventional Commits
-feat: new feature
-fix: bug fix
-refactor: code change that neither fixes a bug nor adds a feature
-perf: performance improvement
-docs: documentation only changes
+feat: new feature.
+fix: bug fix.
+refactor: code change that neither fixes a bug nor adds a feature.
+perf: performance improvement.
+docs: documentation only changes.
 style: formatting/whitespace/semi-colons etc. (no code behavior change)
 test: add/modify tests
 chore: maintenance/tasks (tooling, config, housekeeping)
