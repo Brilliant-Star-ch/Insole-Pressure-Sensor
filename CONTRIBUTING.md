@@ -12,9 +12,6 @@ ci: CI configuration and scripts
 revert: revert a previous commit  
 
 # php-template
-<type>(<scope>): <subject>
-
-# example
 feat(firmware): add master/slave ESP-NOW frame sync  
 fix(sd): handle FAT32 init failure and lower SPI clock  
 refactor(adc): extract stable-read helper  
