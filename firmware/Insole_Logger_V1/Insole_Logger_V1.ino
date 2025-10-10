@@ -544,7 +544,7 @@ void loop(){
   uint32_t fid = ++cur_frame_id;
   int valsR[16]; readAll16(valsR); // MASTER assumed RIGHT by default
 
-  // --- 센서값 시리얼 출력 (디버깅용) ---
+  // --- (For debugging) Sensor values serial output ---
   // Serial.print("[SENSOR] R: ");
   // for(int i=0; i<16; i++){
   //   Serial.print(valsR[i]);
@@ -561,7 +561,7 @@ void loop(){
   fbuf[idx].haveL = true;
 #endif
 
-  // --- SLAVE(LEFT) 데이터가 도착했으면 같이 출력 ---
+  // --- SLAVE(LEFT) ---
   // if(fbuf[idx].haveL) {
   //   Serial.print(" | L: ");
   //   for(int i=0; i<16; i++){
