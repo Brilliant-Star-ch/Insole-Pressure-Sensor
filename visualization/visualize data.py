@@ -52,7 +52,7 @@ latest_file = data_files[-1]
 
 print(f"[INFO] Using latest data file: {latest_file}")
 
-data = np.loadtxt(data_files[0], delimiter=",", skiprows=2)
+data = np.loadtxt(latest_file, delimiter=",", skiprows=2)
 frame_id = data[:, 1].astype(int)
 flag = data[:, 34].astype(int)
 channels_right = data[:,2:18]  # Right 16channels
