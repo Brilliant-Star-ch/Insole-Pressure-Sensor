@@ -1,5 +1,5 @@
 # Insole-Pressure-Sensor
-Let's find out the distribution of foot pressure when walking and running.
+Let's find out the distribution of foot pressure when walking and running.  
 
 # firmware
 # Insole Test
@@ -10,7 +10,7 @@ Serial communication allows you to test whether the pressure sensor is working p
 # visualization
 # insole image
 # insoe outline
-insole_outline_px_filtered: 파일은 수작업으로 필터링함. 
+insole_outline_px_filtered: 파일은 수작업으로 필터링함.  
 
 
 ## License
