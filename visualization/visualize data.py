@@ -1,24 +1,30 @@
 import numpy as np
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import glob
+import time
+import re
+
+plt.ion()  # interactive mode ON
 
 # ===== Load insole outline (smoothed) =====
 outline_file = "visualization/insole outline/insole_outline_px_smooth.csv"
 outline = np.loadtxt(outline_file, delimiter=",")
 
-# 좌우 대칭: 오른발 윤곽선 기준, x축을 이미지 중심에서 반전
+# Left and right symmetry: Right foot contour, invert the x-axis from the center of the image
 x_center = outline[:,0].mean()
 outline_left = outline.copy()
 outline_left[:,0] = 2*x_center - outline_left[:,0]
 
-# 왼발 아웃라인의 x좌표 최대값 계산
+# Calculate the x-coordinate maximum for the left foot outline
 left_max_x = np.max(outline_left[:,0])
-# 오른발 아웃라인을 300 만큼 떨어지게 이동
+# Move the right foot outline down by 300
 offset = 300
 outline_right_shifted = outline.copy()
 outline_right_shifted[:,0] = outline_right_shifted[:,0] + offset
 
-# 센서 위치도 동일하게 이동(백업용)
+# Sensor position moved equally
 sensor_pos_right = np.array([
     [585, 180], [650, 180],
     [560, 290], [630, 290], [700, 290],
@@ -31,39 +37,82 @@ sensor_pos_left = sensor_pos_right.copy()
 sensor_pos_left[:,0] = 2.86*x_center - sensor_pos_left[:,0]
 
 # ===== Load sensor data =====
-data_files = glob.glob("visualization/insole data/*.csv")
+data_files = glob.glob("visualization/insole data/COMBO_LOG*.csv")
 if not data_files:
     raise FileNotFoundError("No CSV files found in 'visualization/insole data' folder.")
 
+# Extract and sort numbers from file names (e.g., COMBO_LOG001 → 1)
+def extract_log_number(filename):
+    match = re.search(r"COMBO_LOG(\d+)", filename)
+    return int(match.group(1)) if match else -1
+
+# Select the file with the highest number
+data_files.sort(key=extract_log_number)
+latest_file = data_files[-1]
+
+print(f"[INFO] Using latest data file: {latest_file}")
+
 data = np.loadtxt(data_files[0], delimiter=",", skiprows=2)
-channels_right = data[:,2:18]  # 오른발 16채널
-channels_left  = data[:,18:34] # 왼발 16채널
+frame_id = data[:, 1].astype(int)
+flag = data[:, 34].astype(int)
+channels_right = data[:,2:18]  # Right 16channels
+channels_left  = data[:,18:34] # Left 16channels
 
-# ===== Visualization (Frame 선택) =====
-frame_idx = 90  # 원하는 시간 프레임 인덱스
+# ===== Visualization settings =====
+cmap_choice = 'RdBu_r'
+fig, ax = plt.subplots(figsize=(12, 8))
 
-plt.figure(figsize=(12, 8))
-# 왼발 윤곽선 (실선)
-plt.plot(outline_left[:,0], outline_left[:,1], 'k-', label="Left Outline")
-# 오른발 윤곽선 (실선, 오른쪽으로 이동)
-plt.plot(outline_right_shifted[:,0], outline_right_shifted[:,1], 'k-.', label="Right Outline")
+# Marker size scaling function
+def scale_marker_size(values, min_size=100, max_size=500):
+    vmin, vmax = 0, 4095
+    scaled = max_size -  (values - vmin) / (vmax - vmin) * (max_size - min_size)
+    return scaled
 
-# 센서값 색상: 'inferno' 컬러맵 사용 (흰색 없음, 어두운 계열)
-cmap_choice = 'inferno'
+# ===== Colorbar Settings =====
+sc = ax.scatter([], [], c=[], cmap=cmap_choice, vmin=0, vmax=4095)
+cbar = plt.colorbar(sc, ax=ax, label="(Blue = Low, Red = High)")
 
-# 센서값을 그대로 사용 (4095=어두운색, 0=밝은색)
-right_colors = channels_right[frame_idx]
-left_colors = channels_left[frame_idx]
+# delete colorbar ticks and labels
+cbar.set_ticks([]) # Delete tickts
+cbar.set_label('') # Delete Label
 
-# 왼발 센서값
-sc_l = plt.scatter(sensor_pos_left[:,0], sensor_pos_left[:,1], c=left_colors, cmap=cmap_choice, s=200, vmin=0, vmax=4095, edgecolors='black', marker='s', label="Left Sensors")
-# 오른발 센서값 (오른쪽으로 이동)
-sc_r = plt.scatter(sensor_pos_right[:,0], sensor_pos_right[:,1], c=right_colors, cmap=cmap_choice, s=200, vmin=0, vmax=4095, edgecolors='black', label="Right Sensors")
+for i in range(len(frame_id)):
+    if flag[i] != 0:
+        continue
 
-plt.title(f"Both Feet Sensor Visualization (Frame {frame_idx})")
-plt.gca().invert_yaxis()
-plt.gca().set_aspect("equal")
-plt.legend()
-plt.colorbar(sc_r, label="Sensor Value (0=bright, 4095=dark)")
-plt.tight_layout()
+    ax.clear()
+
+    # Redraw outline
+    ax.plot(outline_left[:, 0], outline_left[:, 1], 'k-')
+    ax.plot(outline_right_shifted[:, 0], outline_right_shifted[:, 1], 'k-')
+
+    # Fill left foot outline
+    ax.fill(outline_left[:, 0], outline_left[:, 1],
+            color='#FFE0BD', alpha=0.5, label="Left Foot")
+
+    # Fill right foot outline
+    ax.fill(outline_right_shifted[:, 0], outline_right_shifted[:, 1],
+            color='#FFE0BD', alpha=0.5, label="Right Foot")
+
+    right_colors = channels_right[i]
+    left_colors = channels_left[i]
+    right_sizes = scale_marker_size(right_colors)
+    left_sizes = scale_marker_size(left_colors)
+
+    # Draw left/right foot sensors
+    ax.scatter(sensor_pos_left[:, 0], sensor_pos_left[:, 1],
+               c=4095-left_colors, cmap=cmap_choice, s=left_sizes,
+               vmin=0, vmax=4095, edgecolors='black')
+
+    ax.scatter(sensor_pos_right[:, 0], sensor_pos_right[:, 1],
+               c=4095-right_colors, cmap=cmap_choice, s=right_sizes,
+               vmin=0, vmax=4095, edgecolors='black')
+
+    ax.set_title(f"Frame ID: {frame_id[i]}")
+    ax.invert_yaxis()
+    ax.set_aspect("equal")
+
+    plt.pause(0.05)  # 50ms per frame
+
+plt.ioff()
 plt.show()
