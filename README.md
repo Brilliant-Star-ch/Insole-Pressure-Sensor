@@ -1,6 +1,10 @@
+
 # 📁 Insole-Pressure-Sensor
 This project implements a smart insole system using an ESP32 microcontroller, MUX, and multiple pressure sensors.  
 The system is designed to collect, log, and visualize real-time pressure data from the insole for gait or balance analysis.  
+  
+# 📽️ Making Video
+https://youtu.be/FMhggBEbbYE  
   
 # ⚙️ firmware
 1) Insole_Logger_V1:  
