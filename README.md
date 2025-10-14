@@ -48,8 +48,8 @@ The system is designed to collect, log, and visualize real-time pressure data fr
     Excludes invalid frames  
     Draws foot outlines & fills skin tone  
     50 ms pause per frame (plt.pause(0.05))  
-    
-## License
+
+# 💼License
 This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0).  
 You may use, share, and modify the code for non-commercial purposes with attribution.  
 Commercial use is prohibited.  
